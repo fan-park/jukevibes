@@ -147,13 +147,16 @@ export default function RoomView({ code, invite }: { code: string; invite?: Invi
       </div>
 
       {me.is_host && invite && (
-        <section className="card row" style={{ marginTop: 16 }}>
-          <div className="qr" dangerouslySetInnerHTML={{ __html: invite.qrSvg }} />
-          <div className="grow">
-            <div className="muted small">Scan to join, or enter</div>
-            <div className="big-code">{room.code}</div>
-            <div className="sub small">{invite.displayUrl}</div>
+        <section className="card stack" style={{ marginTop: 16 }}>
+          <div className="row">
+            <div className="qr" dangerouslySetInnerHTML={{ __html: invite.qrSvg }} />
+            <div className="grow">
+              <div className="muted small">Scan to join, or enter</div>
+              <div className="big-code">{room.code}</div>
+              <div className="sub small">{invite.displayUrl}</div>
+            </div>
           </div>
+          <ShareButtons code={room.code} roomName={room.name} flash={flash} />
         </section>
       )}
 
@@ -271,10 +274,63 @@ export default function RoomView({ code, invite }: { code: string; invite?: Invi
         ))}
       </div>
 
+      {!me.is_host && (
+        <>
+          <h2>Invite friends</h2>
+          <ShareButtons code={room.code} roomName={room.name} flash={flash} />
+        </>
+      )}
+
       {me.is_host && <HostSettings state={state} act={act} />}
 
       {toast && <div className="toast">{toast}</div>}
     </main>
+  );
+}
+
+function ShareButtons({ code, roomName, flash }: { code: string; roomName: string; flash: (msg: string) => void }) {
+  const [canShare, setCanShare] = useState(false);
+  useEffect(() => setCanShare(typeof navigator !== "undefined" && "share" in navigator), []);
+
+  const link = () => `${window.location.origin}/r/${code}`;
+  const message = () => `Join ${roomName} on Jukevibe and vote on what plays next 🎶 ${link()}`;
+
+  return (
+    <div className="row" style={{ flexWrap: "wrap", gap: 8 }}>
+      <a
+        className="btn small whatsapp grow"
+        href="#"
+        onClick={(e) => {
+          e.preventDefault();
+          window.open(`https://wa.me/?text=${encodeURIComponent(message())}`, "_blank", "noopener");
+        }}
+      >
+        WhatsApp
+      </a>
+      {canShare && (
+        <button
+          className="btn small grow"
+          onClick={() =>
+            navigator.share({ title: "Jukevibe", text: `Join ${roomName} on Jukevibe 🎶`, url: link() }).catch(() => {})
+          }
+        >
+          Share…
+        </button>
+      )}
+      <button
+        className="btn small grow"
+        onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(link());
+            flash("Link copied");
+          } catch {
+            flash(link());
+          }
+        }}
+      >
+        Copy link
+      </button>
+    </div>
   );
 }
 

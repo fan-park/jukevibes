@@ -155,6 +155,12 @@ h2 {
   font-size: 14px;
 }
 
+.btn.whatsapp {
+  background: #25d366;
+  color: #062b13;
+  border: 0;
+}
+
 .btn.danger {
   color: var(--down);
 }
