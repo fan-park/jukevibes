@@ -248,7 +248,7 @@ export default function RoomView({ code, invite }: { code: string; invite?: Invi
 
       <h2>Vibe check · pick a genre</h2>
       <p className="muted small" style={{ marginTop: -4 }}>
-        When nobody has requested anything, the top genre picks the next song.
+        Kicks in when the current song ends: if there are no requests, the top genre picks the next song.
       </p>
       <div className="chips">
         {GENRES.map((g) => {

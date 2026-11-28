@@ -7,8 +7,13 @@ import type { QueueItem, RoomState } from "./shared";
 const LOCK_WINDOW_MS = 25_000;
 /** A queued song that still hasn't started after this long is treated as gone. */
 const LOCK_TIMEOUT_MS = 15 * 60_000;
-/** Guests seen within this window count as "in the room" for skip thresholds and genre votes. */
+/** Guests seen within this window count as "in the room" for skip thresholds. */
 const ACTIVE_WINDOW_MS = 2 * 60_000;
+/**
+ * Genre votes count for anyone seen in the session recently, even if their page is in the
+ * background (e.g. the host is in the Spotify app), so a vote isn't lost when the screen locks.
+ */
+const GENRE_WINDOW_MS = 3 * 60 * 60_000;
 
 type RequestRow = {
   id: string;
@@ -26,16 +31,16 @@ type RequestRow = {
 };
 type VoteRow = { request_id: string; guest_id: string; value: number };
 
-function activeSince(): string {
-  return new Date(Date.now() - ACTIVE_WINDOW_MS).toISOString();
+function since(windowMs: number): string {
+  return new Date(Date.now() - windowMs).toISOString();
 }
 
-export async function activeGuests(roomId: string) {
+export async function activeGuests(roomId: string, windowMs = ACTIVE_WINDOW_MS) {
   const { data, error } = await db()
     .from("guests")
     .select("id, nickname, is_host, genre_vote")
     .eq("room_id", roomId)
-    .gte("last_seen_at", activeSince())
+    .gte("last_seen_at", since(windowMs))
     .order("created_at", { ascending: true });
   if (error) throw error;
   return data as { id: string; nickname: string; is_host: boolean; genre_vote: string | null }[];
@@ -93,7 +98,7 @@ async function loadQueue(roomId: string) {
 }
 
 async function genreFallback(room: Room): Promise<RequestRow | null> {
-  const guests = await activeGuests(room.id);
+  const guests = await activeGuests(room.id, GENRE_WINDOW_MS);
   const counts = new Map<string, number>();
   for (const g of guests) if (g.genre_vote) counts.set(g.genre_vote, (counts.get(g.genre_vote) ?? 0) + 1);
   const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
@@ -241,9 +246,10 @@ export async function buildState(room: Room, guest: Guest): Promise<RoomState> {
   const nowIso = new Date().toISOString();
   await db().from("guests").update({ last_seen_at: nowIso }).eq("id", guest.id);
 
-  const [ranked, guests, myVotes, skipVotes, myPending, locked, allGuests] = await Promise.all([
+  const [ranked, guests, genreVoters, myVotes, skipVotes, myPending, locked, allGuests] = await Promise.all([
     loadQueue(room.id),
     activeGuests(room.id),
+    activeGuests(room.id, GENRE_WINDOW_MS),
     db().from("votes").select("request_id, value").eq("room_id", room.id).eq("guest_id", guest.id),
     room.now_playing
       ? db().from("skip_votes").select("guest_id").eq("room_id", room.id).eq("track_id", room.now_playing.id)
@@ -285,7 +291,7 @@ export async function buildState(room: Room, guest: Guest): Promise<RoomState> {
   }));
 
   const genreCounts = new Map<string, number>();
-  for (const g of guests) if (g.genre_vote) genreCounts.set(g.genre_vote, (genreCounts.get(g.genre_vote) ?? 0) + 1);
+  for (const g of genreVoters) if (g.genre_vote) genreCounts.set(g.genre_vote, (genreCounts.get(g.genre_vote) ?? 0) + 1);
 
   const lockedRow = locked.data as RequestRow | null;
   const np = room.now_playing;
